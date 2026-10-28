@@ -1,1 +1,125 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>총 게임</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#fff;touch-action:none;user-select:none;font-family:sans-serif}
+canvas{display:block}
+.b{position:fixed;width:64px;height:64px;border-radius:50%;background:rgba(0,0,0,.35);color:#fff;font-size:24px;display:flex;align-items:center;justify-content:center}
+#fire{right:24px;bottom:40px;width:96px;height:96px;background:rgba(220,0,0,.6);font-size:36px}
+#reload{right:140px;bottom:24px}
+#cross{position:fixed;left:50%;top:50%;width:12px;height:12px;margin:-6px;border:2px solid #f00;border-radius:50%}
+#hud{position:fixed;left:12px;top:10px;font-size:18px;color:#000}
+#up{left:76px;bottom:116px}#dn{left:76px;bottom:20px}#lf{left:12px;bottom:68px}#rt{left:140px;bottom:68px}
+</style></head><body>
+<div id="hud"></div><div id="cross"></div>
+<div class="b" id="up">▲</div><div class="b" id="dn">▼</div><div class="b" id="lf">◀</div><div class="b" id="rt">▶</div>
+<div class="b" id="reload">R</div><div class="b" id="fire">🔫</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene=new THREE.Scene();scene.background=new THREE.Color(0xffffff);
+const cam=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.05,200);
+const ren=new THREE.WebGLRenderer({antialias:true});ren.setSize(innerWidth,innerHeight);document.body.appendChild(ren.domElement);
+addEventListener('resize',()=>{ren.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()});
+const black=new THREE.MeshBasicMaterial({color:0});
+const floor=new THREE.Mesh(new THREE.BoxGeometry(60,1,60),new THREE.MeshBasicMaterial({color:0x808080}));
+floor.position.y=-.5;scene.add(floor);
+// 목표물(검정 블록)
+const targets=[],walls=[];
+const wmat=new THREE.MeshBasicMaterial({color:0x8b5a2b}); // 벽 모델 2x13x11
+function addWalls(){for(let i=0;i<5;i++){const w=new THREE.Mesh(new THREE.BoxGeometry(2,13,11),wmat);
+ w.scale.setScalar(1/6);w.rotation.y=Math.PI/2; // 폭이 좌우로 가게
+ w.position.set((Math.random()-.5)*30,13/12,-4-Math.random()*14);scene.add(w);walls.push(w)}}
+const ttex=new THREE.TextureLoader().load("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAt0lEQVR4AeyVUQqAIAxAzb8iqLt1zg4XRPVXDCxcWhvo9GfCKGluryeWNW6cmYYrx748AOwVmRPt/eJL1xoqOL3vepxcyEEGhm03XwHJEoEAJBpQNaMA/lZQBVKfBwBz36NtgHlqk7/1AQAkVzUAACUjaqA6gH8UpWECA9O6og8SzCUhAgBoVtUAAJQMZMA/fu97KSjbuDHuR0OFS2VduMDIAHdRzjwFUANqQA2oATWgBsQNUL/uCwAA//8+tGJlAAAABklEQVQDAJHFqUFa5M+iAAAAAElFTkSuQmCC");
+ttex.magFilter=THREE.NearestFilter;ttex.minFilter=THREE.NearestFilter;
+const tmat=new THREE.MeshBasicMaterial({map:ttex,transparent:true,alphaTest:.1});
+function spawn(){for(let i=0;i<8;i++){ // 과녁 모델 9x13x2, 텍스처 32x32
+ const g=new THREE.BoxGeometry(9,13,2);boxUV(g,{size:[9,13,2],uv:[0,0],T:32});
+ const m=new THREE.Mesh(g,tmat);m.scale.setScalar(1/8);m.rotation.y=Math.PI; // 과녁 앞면이 플레이어를 향함
+ m.position.set((Math.random()-.5)*40,13/16,-6-Math.random()*22);scene.add(m);targets.push(m)}}
+// 총 모델 (카메라에 붙임)
+const gun=new THREE.Group();
+const GEO=[{"name": "bone", "pivot": [0, 0, 0], "cubes": [{"origin": [-2, 0, -1], "size": [2, 2, 8], "pivot": [-1, 0, 0], "rotation": [0, -17.5, 0], "uv": [0, 11]}]}, {"name": "bone2", "parent": "bone", "pivot": [0, 0, 0], "cubes": [{"origin": [-5, 0, -1], "size": [2, 2, 9], "pivot": [-4, 0, 0], "rotation": [0, 5, 0], "uv": [0, 0]}]}, {"name": "bone3", "pivot": [-1, 0, 0], "cubes": [{"origin": [-3, 0, 5], "size": [1, 5, 2], "uv": [20, 20]}]}, {"name": "bone4", "pivot": [0, 0, 0], "cubes": [{"origin": [-3, 3, 6], "size": [1, 2, 7], "uv": [20, 11]}]}, {"name": "bone5", "pivot": [-1, 0, 0], "locators": {"_null_null_object": [-2, 0, 0]}}];
+const tex=new THREE.TextureLoader().load("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABwklEQVR4AexYMVLEMAxMQkPBL2goeAY/oKTiCwzPYPgCFSU/4BkUNPyCgoYJUmbkcXy5kx2wTxF7Y00sSzpLq73Yc0OX8fl+fxtjyQjZjEsWAJupZkWiAGAFaK5CwABX7VxRTBYDTi4uu1hW7GM2JAsAs9n/QWIAIL7gxHMCd4yEprMx2WJ/mX993I0sM2/DChhAL7d+SahpPQt1touF10SW4k7PH3sW8lkaE3OWDMdaAwOOhbyVfcEAK51olUe6j8oAetG5vQUyGCoA7ORZagAgR93O8+b1U7DcsZFB1mjabgx0xqd/d0ki8kyzmflLPN/+WFJn63oNBkwXKC78+vaeH6L3z1dnYU6GfXMytRsDveRmN0Hael9iYT2NYZ1vfywUv6lRgwHhp/Py9MBgBJ0Va1IDAGs1HswHAByE5x8YwYAKTQ6nBX13PCfV3gAD7PWkbUZgQFu82++m7QgGaAh5t4MB3jus1QcGaAh5t4MB3jus1QcGaAh5t4MB3jus1QcGaAh5t4MB3jpcWg8YUIqYN38wwFtHS+sBA0oR8+YPBnjraGk9YEApYt78wQBvHS2tBwwoRcybPxiw9Y7+Nv8fAAAA//8XzJUOAAAABklEQVQDADf3oIFfrcF8AAAAAElFTkSuQmCC");
+tex.magFilter=THREE.NearestFilter;tex.minFilter=THREE.NearestFilter;
+const hand=new THREE.Group();
+function boxUV(g,c){const[w,h,d]=c.size,[u,v]=c.uv,T=c.T||64,uv=g.attributes.uv;
+ const R=[[u+d+w,v+d,d,h],[u,v+d,d,h],[u+d,v,w,d],[u+d+w,v,w,d],[u+d+w+d,v+d,w,h],[u+d,v+d,w,h]]; // +x,-x,+y,-y,+z,-z
+ R.forEach((r,i)=>{const x0=r[0]/T,x1=(r[0]+r[2])/T,y0=1-r[1]/T,y1=1-(r[1]+r[3])/T;
+  uv.setXY(i*4,x0,y0);uv.setXY(i*4+1,x1,y0);uv.setXY(i*4+2,x0,y1);uv.setXY(i*4+3,x1,y1)})}
+GEO.forEach(b=>(b.cubes||[]).forEach(c=>{
+ const geo=new THREE.BoxGeometry(c.size[0],c.size[1],c.size[2]);boxUV(geo,c);
+ const m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:tex,transparent:true,alphaTest:.1}));
+ const p=c.pivot||[c.origin[0]+c.size[0]/2,c.origin[1]+c.size[1]/2,c.origin[2]+c.size[2]/2];
+ const pv=new THREE.Group();pv.position.set(p[0],p[1],p[2]);
+ if(c.rotation)pv.rotation.set(THREE.MathUtils.degToRad(c.rotation[0]),THREE.MathUtils.degToRad(c.rotation[1]),THREE.MathUtils.degToRad(c.rotation[2]));
+ m.position.set(c.origin[0]+c.size[0]/2-p[0],c.origin[1]+c.size[1]/2-p[1],c.origin[2]+c.size[2]/2-p[2]);
+ pv.add(m);hand.add(pv)}));
+hand.scale.setScalar(1/16);
+const wrap=new THREE.Group();wrap.rotation.y=Math.PI;wrap.position.set(-.16,-.28,.15); // 모델 +z가 앞이 되도록 뒤집음
+wrap.add(hand);gun.add(wrap);
+const flash=new THREE.Mesh(new THREE.SphereGeometry(.06),new THREE.MeshBasicMaterial({color:0xffa000}));
+flash.position.set(0,-.2,-.75);flash.visible=false;gun.add(flash);
+const gunBase=new THREE.Vector3(0,-.2,-.5);gun.position.copy(gunBase);cam.add(gun);scene.add(cam);
+// 상태
+let yaw=0,pitch=0,recoil=0,recKick=0,ammo=17,reloading=0,score=0,lastShot=0;
+const keys={};const ray=new THREE.Raycaster();
+const SHOT="data:audio/mpeg;base64,SUQzBAAAAAABUlRYWFgAAAASAAADbWFqb3JfYnJhbmQAbXA0MgBUWFhYAAAAEQAAA21pbm9yX3ZlcnNpb24AMABUWFhYAAAAHAAAA2NvbXBhdGlibGVfYnJhbmRzAGlzb21tcDQyAFRYWFgAAAAmAAADY29tLnNhbXN1bmcuYW5kcm9pZC51dGNfb2Zmc2V0ACswOTAwAFRYWFgAAAAYAAADY29tLmFuZHJvaWQudmVyc2lvbgAxNwBUU1NFAAAADwAAA0xhdmY2MC4xNi4xMDAAAAAAAAAAAAAAAP/7WMAAAAAAAAAAAAAAAAAAAAAAAEluZm8AAAAPAAAAGAAAHCAAFBQUFB4eHh4oKCgoMzMzMz09PT1HR0dHUVFRUVFcXFxcZmZmZnBwcHB6enp6hYWFhY+Pj4+PmZmZmaOjo6Ourq6uuLi4uMLCwsLMzMzMzNfX19fh4eHh6+vr6/X19fX/////AAAAAExhdmM2MC4zMQAAAAAAAAAAAAAAACQFwAAAAAAAABwgGodLnQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/7WMQAAA6MyypVhIACAJxoVzTAAAADCDy8hqkeNHaAKY4Jf9FNMBEwuQW0LwJgNcnK4oFDCYXAOAMTpADA2TyIACAAAwGCcjBMEwTDZOjRoIZ/4QhPaIAoCAIBgkJ0c5zmjbn6hCGffPwQIEEIQRzqEIec0CA4D4Pg5E4Pg+7lDnB8H3+XPwQDAAIAA4ANzFK0QJIQaeaCxoYcHAhiBwQYFhyGSmsVbSLuLLwPmJVJo7BUPRKCw5MQKlpqxiV0I3DJsrlkxUnrwA8CGVj5s9P14FaK3HW7tmJ0ttfXD5eh2Zsw69j2sXapw9UaO6NxWb6ZqWl6W9LWnKR1WXCp4F5Rz6zq0cIqWhSlAAAO/PlwAHiLJAxn+XZXEek37yFT0v/7WMQLApFWI1R89AAKA0PqlPMWeSPEV1Njyy7qvuEntqnhz0MpEU+pj49Y5nm/v4p39ELe0SvnvRK+bn//5f/T//0r9OKT3v6/9yxdkjcOx4pJQeFgrD+E3IDxxd+0QUFH/4r////////////+E3d7Q9Kd30FD4BoKCif1MIQY4u8u9oklnohgAzr0kgBu+JmKUnUNhm89jzs8RSMc+V1usKfdIKew/3vTF+wgnOqyJIl791qh/lnO9zXRfP8djn81Wvs+UcmWbe5kuTVUD0VaJr6pJVy843Xz31WQkzlCaw/G9Jwz50KQzZZgOwlOT1NkFhUn///////+lvo9bXslvVb1qdGJT46ragACQAAH5I0kRCdJORhzUVUWitZ7Nf/7WMQKgpEWI1MsGFPKDEQpyYMKewZnatXbWuyyvzlitihfMOS3x0ftyatTGnEd6Wv6nfvy6hxXlc5ROKL3Badlwzy7M9s9528b66K8qPRjsip2LhNzO8nY/+RPK/nSFBmikpCtKzC2C1By/qVvX//////+b9H/oZWR/+tHEuzlBMhVHLSUzCYwBVpOVCvITHW7AbEk55I/rSrvzUzqrboMfzl9Djby0MMvba7lmJssCQNzvpjo7L4nhrSLMOvIloZNrmXLusLIFTlZvIMinpFOHLOYqowtRbJGeX1qtrltNmd5I1LSVNOU/8zLPVllHGKwh36vRk/////////////36GNmGJKFMMyFBU0AAxCAAABcnXAorxZ3S2muPxRyWf/7WMQKABCSG09Vg4AKNCvvdxLQAiyrs3LL1k8aDBiiQQNJDwpMHDiMfMHKljDEZDVJoroDiQMmEJG57lEoqPecxZUPMSWMMKMxprsepjlXq5QqY7KeZnHTHNNOexyGu77NNMTNMR2cyZtc05Ut6OY6H2//////////////6ETC61Ydbj5kzEIzEkgkEQiAAiIwIC6SqkSaKaSg4QC8HADQUSBIkgPEFvIKZ8wJwRQe4xSWSNDRNMfR2jWHGcLCwa0zhoaY9B8JUoGjmxqakkaIug1N3pG5ouo3czRPmi1IpfumpkFLTrJhgbI1rrWo/Q2fp091m1SZotnU/epZg/6mT6brTp/PrD4RASj3////xLFl7RaqIAAAAowoMFTWcv/7WMQGgI/GJXO9g4ACFMTsqMMKeCCnQhKbO01TVyo1ef1/aXGpLmGwqOHSBpw6JxoDkbKNnHhl0OUoeysagimFRRQdKigfLG6K7KzmscerUdB48SjyLnObVGUoPmOYeyHR4kc6KqaTkOmnG2+x1zc71ab7o////////////////////8bHgAQgARQVjImvDQIoKgktJqtSfsbK9Jbbd645ZIgpRe2xNNekGkWPkiiYgHomPEIdLGQSekCd3hhMWXFjjClEiYo8/EEIhA5pLvU2gxWZd2YBEI3M7fIdCPt4777Zu7vB+72zxGwYgcDAwM6oIIQQ3//////////////ZT/4Gd/4AACzsgJUAVy+YXQZqhNU7idJtuZZXbU5byf/7WMQKA5EFN14nsQ/B5xzrTPSxOMLIkckoJh2jEYB12ZRnPHpWKwjCUqOnnGXjg+KyURQlZJJl6HX8mGJ+7q4vNO86nRK21xlHRCL6X27RyhYdUasu1weEOdhCEpgQiyWKzvNFCyqtSxVuzMqDXUk7nUVqdzVY5tZk0SEg2///////8SkfR9QNAEV3OLlIHESEPsdhdEQGGxhAfhJ+ihnApAPG0J1t2NSMnkzBDi0zpAoZktsRMCIwMYj1+WtxmaXXYAchHDLbsWXYedh9bCeepSW1TO/ZRActiee1eTXvZ5OsWfS39CadKAcAggdWYbeBmpjQbYEzv//////+eEX/lCKAgAAAIiXgBymaTM9TrMdFPz6ld1xFhbdtj1tjhP/7WMQOgI/GJ1rnpFHSAibqnPSWOAQqiIcSlF80DDayCLSSIlQqwUkwPDAinrPkxv9LMHEjhNOoYlS8JZGAon56s9pJL5VpIipLUShKtO4yW289K//9byIFYL7yndSSP88oS5hGn//////////////////VkcWAgBas2wB8ugsUMCRC3uJvuUM/Ft+2x7MbgoLEfFSQakPqSNhRGrMssqTUhXgsgtHMyYA0aK5io8TJS821Uw20I1EMCFCJmTkMTJECKScsndFl2yGwGJnyeB8jL5PRvnl2jft7WSQaUpXb8rG1t9XUpZkAxYWBp////+UOf///6FXQAQAAAArAqRqQRWTPUoo3WJs+bDIKSX2rMPW6J5HCJx8S5hlghamRNv/7WMQUgBBxuVdMJU/R5MTraYQd+ok2JIF2IxTioqXkiZNgUPYnKop4iP2yyJuRF+jd12/OblVW5byv6WsFVY4wSkTmuejNnmZioZZqM2ceYr57nTD/9expAN0Ir/////////9w8AnEgDjv///OULyEVAgAApUZMxBm9xqTSFGp5/ZFhS081Unp3AcNMGLTD2jp8a6WQbi1ploRZ0shMFuHy619IuYLBdNDSJ+VqquL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wc0TLrtqO19lgtNU7L6u9SkKziZ7qKiEPsip8yBkIqdjuizHNjz2mcd++eURj1NxMiEQaZueTKBpJpgxggRq2xrQhoVZnwQUHjwJMBK59ldV21chdTtTT+ylmTSoyzOOtUh9+r5wYpRKGZMjlolnxDEo+bD02hkJhSORPtWuwIy8JNF6le+tqyz+e092u9BfZy8wy/n48dLobNNSYxI7WgXPtk2Bt2kzwdkeGNWXy3hQEBdaO0nf////////6wDBJw3Mo5bIyYAxp40ZIt8oGZpaNFmIoYpqzThMScJIYSA+OUISimOp0QwJHZUAkroSic2fQsGV2RxAiDUyjoShKP/7WMTmAw6hAyxsJMzCHqPjQaYaoProQAyhVXNWu1rVoslLaCgK4qjiW9iRK5aqqqav2r+q9EgKQBpolAQKsOg0DIC5GSHu5H///////63ZLupMQU1FMy4xMDCqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqlwAogsFGZI0vMFjiFgiqF4AbQCXzMCIl0gXmgpfKsyjjA2WN+3rBlAU0kyU3VFFztcfuKH54vbp+uGwigWBUHRQOZMLaA87bPrmzubtq2WnRVLxTKZwdniNSZFUrF4vnD7l8hgahg1plMXSkXk5wv/7WMTtA5GhHRINMFVB+hpgSaYZ6Pc+m5m5ubaGCAM/6qf+mir/qplVBq6aTEFNRTMuMTAwqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqv/7WMS9A9Cw7KgsZYeIAAA0gAAABKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqg==";
+const shotPool=[0,1,2,3].map(()=>new Audio(SHOT));let shotI=0;
+function playShot(){try{const a=shotPool[shotI++%shotPool.length];a.currentTime=0;a.play().catch(()=>{})}catch(e){}}
+function fire(){
+ const t=performance.now();if(t-lastShot<130||reloading)return;
+ if(ammo<=0){reload();return}
+ lastShot=t;ammo--;recoil=1;playShot();
+ pitch+=0.03+Math.random()*0.015;yaw+=(Math.random()-.5)*0.02; // 반동: 시점이 위로 튐
+ flash.visible=true;setTimeout(()=>flash.visible=false,50);
+ ray.setFromCamera({x:0,y:0},cam);
+ const hit=ray.intersectObjects(targets.concat(walls))[0];
+ if(hit&&targets.includes(hit.object)){scene.remove(hit.object);targets.splice(targets.indexOf(hit.object),1);score++;if(!targets.length)spawn()}
+ else score-=2; // 과녁을 못 맞히면(벽에 맞아도) -2
+}
+function reload(){if(reloading||ammo===17)return;reloading=90}
+// 입력
+addEventListener('keydown',e=>{keys[e.code]=1;if(e.code==='Space')fire();if(e.code==='KeyR')reload()});
+addEventListener('keyup',e=>keys[e.code]=0);
+addEventListener('mousedown',e=>{if(e.target.tagName==='CANVAS')fire()});
+function hold(id,k){const el=document.getElementById(id);
+ const on=e=>{e.preventDefault();keys[k]=1},off=e=>{e.preventDefault();keys[k]=0};
+ el.addEventListener('touchstart',on,{passive:false});el.addEventListener('touchend',off);el.addEventListener('touchcancel',off);
+ el.addEventListener('mousedown',on);el.addEventListener('mouseup',off)}
+hold('up','KeyW');hold('dn','KeyS');hold('lf','KeyA');hold('rt','KeyD');
+const fb=document.getElementById('fire');let fh=0;
+fb.addEventListener('touchstart',e=>{e.preventDefault();fh=1},{passive:false});
+fb.addEventListener('touchend',()=>fh=0);fb.addEventListener('touchcancel',()=>fh=0);
+fb.addEventListener('mousedown',()=>fh=1);fb.addEventListener('mouseup',()=>fh=0);
+document.getElementById('reload').addEventListener('touchstart',e=>{e.preventDefault();reload()},{passive:false});
+document.getElementById('reload').addEventListener('click',reload);
+// 화면 드래그로 시점 이동
+let lt=null;
+ren.domElement.addEventListener('touchstart',e=>{lt=e.touches[0]});
+ren.domElement.addEventListener('touchmove',e=>{const t=e.touches[0];if(lt){yaw-=(t.clientX-lt.clientX)*.005;pitch-=(t.clientY-lt.clientY)*.005}lt=t;
+ pitch=Math.max(-1.4,Math.min(1.4,pitch))});
+ren.domElement.addEventListener('touchend',()=>lt=null);
+// 루프
+const hud=document.getElementById('hud');
+function loop(){
+ requestAnimationFrame(loop);
+ if(fh)fire();
+ const sp=.12;
+ const f=(keys.KeyW?1:0)-(keys.KeyS?1:0),s=(keys.KeyD?1:0)-(keys.KeyA?1:0);
+ cam.position.x+=(-Math.sin(yaw)*f+Math.cos(yaw)*s)*sp;
+ cam.position.z+=(-Math.cos(yaw)*f-Math.sin(yaw)*s)*sp;
+ cam.position.y=1.6;
+ pitch=Math.max(-1.4,Math.min(1.4,pitch*.97)); // 반동 후 서서히 복귀
+ cam.rotation.set(pitch,yaw,0,'YXZ');
+ // 총 반동 애니메이션
+ recoil*=.82;
+ gun.position.set(gunBase.x,gunBase.y+recoil*.02,gunBase.z+recoil*.14);
+ gun.rotation.x=recoil*.35;
+ if(reloading){reloading--;gun.rotation.x=.6;if(!reloading)ammo=17}
+ hud.textContent=reloading?'장전 중...':`탄 ${ammo}/17  점수 ${score}`;
+ ren.render(scene,cam);
+}
+addWalls();spawn();loop();
+</script></body></html>
 
